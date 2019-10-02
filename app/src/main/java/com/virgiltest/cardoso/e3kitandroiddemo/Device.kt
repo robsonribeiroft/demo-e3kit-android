@@ -1,21 +1,24 @@
 package com.virgiltest.cardoso.e3kitandroiddemo
 
 import android.content.Context
+import android.content.Context.WIFI_SERVICE
+import android.net.wifi.WifiManager
 import com.virgilsecurity.android.common.data.model.LookupResult
 import com.virgilsecurity.android.common.exceptions.RegistrationException
-
-import com.virgilsecurity.android.ethree.kotlin.interaction.*
-import com.virgilsecurity.android.ethree.kotlin.callback.*
+import com.virgilsecurity.android.ethree.kotlin.callback.OnCompleteListener
+import com.virgilsecurity.android.ethree.kotlin.callback.OnGetTokenCallback
+import com.virgilsecurity.android.ethree.kotlin.callback.OnResultListener
+import com.virgilsecurity.android.ethree.kotlin.interaction.EThree
 import com.virgilsecurity.sdk.crypto.VirgilPublicKey
-
 import org.json.JSONException
 import org.json.JSONObject
-
 import java.io.IOException
 import java.io.InputStreamReader
 import java.net.HttpURLConnection
 import java.net.URL
+import java.util.*
 import kotlin.system.measureTimeMillis
+
 
 class Device(val identity: String, val context: Context) {
 
@@ -27,27 +30,37 @@ class Device(val identity: String, val context: Context) {
         log("[$identity] $e")
     }
 
+    private fun deviceIpAddress(): String{
+        val wm = context.applicationContext.getSystemService(WIFI_SERVICE) as WifiManager?
+        val ip = Formatter.formatIpAddress(wm!!.connectionInfo.ipAddress)
+        return ip
+    }
+
     fun initialize(callback: () -> Unit) {
 
         //# start of snippet: e3kit_authenticate
         fun authenticate(): String {
-            val baseUrl = "http://10.0.2.2:3000/authenticate"
+            val baseUrl = "${deviceIpAddress()}/authenticate"//"http://10.0.2.2:3000/authenticate"
             val fullUrl = URL(baseUrl)
 
             val urlConnection = fullUrl.openConnection() as HttpURLConnection
-            urlConnection.doOutput = true
-            urlConnection.doInput = true
-            urlConnection.setRequestProperty("Content-Type", "application/json; charset=UTF-8")
-            urlConnection.setRequestProperty("Accept", "application/json")
-            urlConnection.requestMethod = "POST"
+            urlConnection.apply {
+                doOutput = true
+                doInput = true
+                setRequestProperty("Content-Type", "application/json; charset=UTF-8")
+                setRequestProperty("Accept", "application/json")
+                requestMethod = "POST"
+            }
+
 
             val cred = JSONObject()
 
             cred.put("identity", identity)
 
-            val wr = urlConnection.outputStream
-            wr.write(cred.toString().toByteArray(charset("UTF-8")))
-            wr.close()
+            val wr = urlConnection.outputStream.apply {
+                write(cred.toString().toByteArray(charset("UTF-8")))
+                close()
+            }
 
             val httpResult = urlConnection.responseCode
             if (httpResult == HttpURLConnection.HTTP_OK) {
@@ -67,13 +80,15 @@ class Device(val identity: String, val context: Context) {
         //# start of snippet: e3kit_jwt_callback
         fun getVirgilJwt(authToken: String): String {
             try {
-                val baseUrl = "http://10.0.2.2:3000/virgil-jwt"
+                val baseUrl = "${deviceIpAddress()}/virgil-jwt"//"http://10.0.2.2:3000/virgil-jwt"
                 val fullUrl = URL(baseUrl)
 
                 val urlConnection = fullUrl.openConnection() as HttpURLConnection
-                urlConnection.setRequestProperty("Accept", "application/json")
-                urlConnection.setRequestProperty("Authorization", "Bearer $authToken")
-                urlConnection.requestMethod = "GET"
+                urlConnection.apply {
+                    setRequestProperty("Accept", "application/json")
+                    setRequestProperty("Authorization", "Bearer $authToken")
+                    requestMethod = "GET"
+                }
 
                 val httpResult = urlConnection.responseCode
                 if (httpResult == HttpURLConnection.HTTP_OK) {
@@ -98,9 +113,7 @@ class Device(val identity: String, val context: Context) {
 
         //# start of snippet: e3kit_initialize
         EThree.initialize(context, object : OnGetTokenCallback {
-            override fun onGetToken(): String {
-                return getVirgilJwt(authToken)
-            }
+            override fun onGetToken(): String = getVirgilJwt(authToken)
         }).addCallback(object : OnResultListener<EThree> {
             override fun onSuccess(result: EThree) {
                 eThree = result
